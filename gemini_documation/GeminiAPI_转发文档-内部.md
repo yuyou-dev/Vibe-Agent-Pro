@@ -21,7 +21,7 @@
 
 
 * **签名算法**: `MD5(密钥 + x-time + x-nonce)`
-* 密钥 (AUTH_SECRET): ``
+* 密钥 (AUTH_SECRET): `你的密钥`
 * 结果为 32 位小写字符串。
 
 
