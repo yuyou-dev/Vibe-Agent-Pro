@@ -1,223 +1,87 @@
 ---
-# 技能元数据（必须放在文件顶部，用---包裹）
-name: Gemini Local Dev Proxy  # 技能名称（保持不变，建议唯一）
-description: Complete guide to migrating, securing, and automating local Gemini development using a proxy architecture.  # 描述（保持不变）
-# 【新增】触发条件：Agent在哪些场景下会调用该技能
+# 技能元数据
+name: Gemini Local Dev Proxy Protocol
+description: Gemini本地开发环境构建协议。定义了架构标准、安全规范及自动化初始化流程，指导Agent智能实现环境搭建。
 triggers:
-  - scenario: "用户需要搭建Gemini本地开发环境"  # 场景描述
-  - scenario: "用户遇到Gemini API网络限制"
-  - scenario: "用户需要保护Gemini API密钥"
-# 【新增】参数定义：技能调用时需要的用户输入（如API密钥、端口号）
+  - scenario: "一键初始化Gemini本地运行环境"
+  - scenario: "修复本地开发中的跨域(CORS)或网络连接问题"
+  - scenario: "需要实现前后端分离的 Gemini API 调用架构"
 parameters:
-  - name: auth_secret  # 参数名（与.env中的AUTH_SECRET对应）
-    type: string  # 参数类型（string/number/boolean）
-    required: true  # 是否必填（true/false）
-    description: "Gemini API的AUTH_SECRET，用于生成安全头x-sign"
-  - name: proxy_port  # 参数名（端口号）
-    type: number
-    required: false
-    default: 8080  # 默认值（可选）
-    description: "本地代理服务的端口号，默认8080"
+  - name: auth_secret
+    type: string
+    required: true
+    description: "鉴权密钥 (AUTH_SECRET)"
 ---
-# Gemini Local Dev Proxy
 
-This skill helps you set up a robust local development environment for Gemini, bypassing network restrictions and securing API keys.
+# Gemini Local Dev Proxy Protocol
 
-## 📂 Structure
-*   **`scripts/`**: Automation scripts for one-click startup.
-*   **`resources/`**: Configuration templates.
+本协议指导 Agent **主动构建**安全、稳健的 Gemini 本地开发环境。Agent 应根据项目当前状态，智能补全缺失组件，而非机械复制固定代码。
+
+## 🎯 核心目标 (Objectives)
+1.  **一键就绪**: 用户发出指令后，Agent 需全自动完成环境检查、文件创建、依赖安装及服务启动。
+2.  **架构分离**: 严禁在前端直接调用 API。必须构建 `Frontend <-> Local Proxy <-> Remote API` 的三层架构。
+3.  **零知识前端**: 前端代码中**绝不允许**出现 `AUTH_SECRET` 或敏感配置，所有鉴权逻辑必须封装在后端代理中。
 
 ---
 
-## 🏃 Quick Start (The "One-Click" Script)
+## 🛠️ 执行工作流 (Execution Workflow)
 
-1.  Copy **[scripts/start_dev.js](scripts/start_dev.js)** to your project root.
-2.  Run `node start_dev.js`.
-    *   It automatically runs `npm install` (if needed).
-    *   It starts both Backend and Frontend in parallel.
+Agent 收到触发指令后，**必须**按以下逻辑顺序执行操作：
 
----
+### 1. 环境扫描 (Scan & Analysis)
+*   **动作**: 检查项目根目录是否存在 `.env`, `server.js` (或 `server.cjs`), 以及前端 API 调用服务文件。
+*   **判断**: 识别当前的前端框架 (React/Vue/Vite) 以决定启动命令。
 
-## 🏗️ Implementation Guide
+### 2. 补全缺失组件 (Component Generation)
+根据扫描结果，动态创建或修复以下组件。**请遵循下方的[实现约束]**。
 
-### 1. Backend Proxy (`server.js`)
+*   **配置层**: 创建 `.env`，写入 `AUTH_SECRET` 和 `TARGET_BASE_URL`。
+*   **接入层 (Backend)**: 创建轻量级 Node.js 代理服务器（推荐使用 Express）。
+*   **调用层 (Frontend)**: 修改前端 API 服务，使其指向 `http://localhost:PORT`，而非直接调用远程接口。
+*   **自动化层**: 创建 `start_dev.js` 脚本，用于**并行启动**前后端服务。
 
-You need a Node.js Express server to securely sign and forward requests.
+### 3. 先决条件检查 (Prerequisite Check)
+*   **端口冲突检测**: 默认使用 **3005** 端口作为代理端口，避开 8080/3000。
+*   **依赖检查**: 检查 `package.json`，若缺失 `express`, `cors`, `axios`, `dotenv`，则自动执行安装。
 
-**Setup Instructions:**
-1.  Install dependencies: `npm install express cors body-parser axios dotenv`
-2.  Create `server.js` with the following **Critical Implementation Details**:
-
-#### Key Precautions & Code Pattern
-```javascript
-// server.js - Core Logic
-require('dotenv').config(); // Load env vars first
-const express = require('express');
-const crypto = require('crypto');
-const axios = require('axios');
-const https = require('https');
-const cors = require('cors');
-
-// Validate Env Vars
-if (!process.env.TARGET_BASE_URL || !process.env.AUTH_SECRET) {
-    console.error("Missing required environment variables: TARGET_BASE_URL or AUTH_SECRET");
-    process.exit(1);
-}
-
-const targetUrl = new URL(process.env.TARGET_BASE_URL);
-
-// 1. HTTPS Agent Configuration (CRITICAL for Stability)
-const httpsAgent = new https.Agent({
-    rejectUnauthorized: false, // Ignore self-signed certs (if any)
-    servername: targetUrl.hostname, // CRITICAL: SNI for Vercel/Cloudflare
-    keepAlive: true, // Try keeping connection open
-    timeout: 60000,  // Socket timeout
-    scheduling: 'fifo'
-});
-
-const app = express();
-app.use(cors()); // Enable CORS
-
-// 2. Large Payload Support (CRITICAL for Image Uploads)
-app.use(require('body-parser').json({ limit: '50mb' }));
-
-app.post('/api/generate', async (req, res) => {
-    try {
-        // 3. Signature Generation (CRITICAL for Auth)
-        const now = Math.floor(Date.now() / 1000).toString();
-        const nonce = crypto.randomUUID();
-        const rawString = process.env.AUTH_SECRET + now + nonce;
-        const sign = crypto.createHash('md5').update(rawString).digest('hex');
-
-        // 4. Forwarding Request
-        const response = await axios({
-            method: 'post',
-            url: `${process.env.TARGET_BASE_URL}/api/generate`,
-            data: req.body,
-            headers: {
-                'x-time': now,
-                'x-nonce': nonce,
-                'x-sign': sign,
-                'Content-Type': 'application/json',
-                // Masquerade User-Agent to avoid WAF blocking "axios"
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            },
-            httpsAgent: httpsAgent,
-            timeout: 600000 // 10 minute timeout
-        });
-        
-        res.json(response.data);
-    } catch (error) {
-        console.error("Proxy Error:", error.message);
-        if (error.response) {
-            console.error("Upstream Response:", error.response.data);
-            res.status(error.response.status).json(error.response.data);
-        } else {
-            res.status(500).json({ error: "Proxy Request Failed" });
-        }
-    }
-});
-```
-
-### 2. Frontend Service (`geminiService.ts`)
-
-**DO NOT** use the `@google/genai` SDK in the frontend. It exposes keys and doesn't support the custom proxy logic easily.
-
-#### Implementation Pattern
-Use native `fetch` to call your local proxy.
-
-```typescript
-// services/geminiService.ts
-const PROXY_URL = "http://localhost:8080/api/generate";
-
-export async function generateContent(model: string, prompt: string, imageBase64?: string) {
-  const payload = {
-    model: model, // e.g., "gemini-3-pro-image-preview"
-    contents: [{
-      parts: [
-        { text: prompt },
-        // Inline data for images
-        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
-      ]
-    }],
-    config: {
-        // Add generation config here
-    }
-  };
-
-  const response = await fetch(PROXY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) throw new Error("Proxy request failed");
-  
-  const result = await response.json();
-  
-  // NOTE: Check for 'data' wrapper if upstream API changes structure
-  // Some mirrors return { data: { candidates: [...] } }
-  const candidates = result.candidates || result.data?.candidates;
-  
-  return candidates;
-}
-```
-
-### 3. Documentation & Model Selection
-Instead of guessing models, ALWAYS consult the local documentation in `resources/gemini_documation/`.
-
-*   **Image Generation**: See `resources/gemini_documation/gemini图片生成文档.md`
-*   **Text/Chat**: See `resources/gemini_documation/gemini文本生成文档.md`
-*   **Vision/Multimodal**: See `resources/gemini_documation/gemini图片理解文档.md`
-*   **Audio/Video**: See `resources/gemini_documation/gemini音频理解文档.md`, `resources/gemini_documation/gemini视频理解文档.md`
-
-**Agent Instruction**: When a user asks for a specific capability (e.g., "generate image"), **read the relevant documentation file first** to find the correct model name (e.g., `gemini-3-pro-image-preview` or newer) and API parameters.
-
-### 4. Image Generation Strategy
-If the documentation confirms usage of `gemini-3-pro-image-preview` (Nano Banana Pro):
-*   **Mode**: Non-streaming.
-*   **Response**: Watch for wrapped responses (e.g., `data.candidates`).
-
-
-### 5. Configuration (`.env`)
-
-Ensure your `.env` contains the following strict configuration. **Do not commit this file.**
-```env
-# Security Configuration
-AUTH_SECRET=your_actual_secret_here
-PORT=8080
-TARGET_BASE_URL=https://target-api-domain.com
-```
+### 4. 启动与验证 (Launch & Verify)
+*   **动作**: 运行 `node start_dev.js`。
+*   **验证**: 启动后，Agent 必须通过 `curl -v http://localhost:PROXY_PORT` 验证代理服务是否存活。
 
 ---
 
-## 🔧 Troubleshooting
+## 🔒 实现约束 (Implementation Constraints)
 
-### "404 Not Found", "No content generated", or "Socket Disconnected"
+Agent 生成代码时，必须严格遵守以下技术规范：
 
-If you encounter a `404` error, "No content generated", or `500 Client network socket disconnected`:
+### A. 后端代理规范 (Backend Proxy)
+1.  **CORS 健壮性**:
+    *   必须显式配置 `cors` 中间件。
+    *   **强制约束**: 对于 `OPTIONS` 预检请求，必须使用**正则匹配** (如 `/.*/`) 而非字符串通配符 (`'*'`)，以兼容新版 Express 生态。
+    *   必须设置 `credentials: true` 并正确反射 `origin`。
+2.  **连接稳定性**:
+    *   使用 `https.Agent` 并开启 `keepAlive: true`。
+    *   必须配置 `servername` (SNI) 以支持 Vercel/Cloudflare 等 CDN 托管的上游服务。
+3.  **鉴权注入**:
+    *   前端请求**不携带** Auth Secret。
+    *   代理服务器接收请求后，在后端自动计算 `x-sign`, `x-time`, `x-nonce` 并注入 Headers。
 
+### B. 前端调用规范 (Frontend Service)
+1.  **原生调用**: 推荐使用原生 `fetch` API，而非特定 SDK（除非该 SDK 支持自定义 Base URL 且不校验 Key）。
+2.  **动态代理**: API Base URL 应从配置或常量读取，便于开发/生产环境切换。
+3.  **错误处理**: 必须检查响应 `Content-Type` 及 HTTP 状态码，优先处理 JSON 解析错误。
 
-1.  **Check `AUTH_SECRET`**: Ensure your `.env` has the correct `AUTH_SECRET`. An incorrect secret will cause the upstream mirror to reject the request (often with a 403 or 404 depending on implementation).
-2.  **Valid Token**: Ensure the `AUTH_SECRET` matches exactly what is provided by your administrator.
-3.  **Check Payload**: "No content generated" often means the model returned an empty `candidates` list. This can happen if:
-    *   The prompt triggered safety filters.
-    *   The model failed to process the image.
-    *   **Debugging**: Modify `geminiService.ts` to log the full response.
-    *   **Wrapped Response**: Sometimes the API response is wrapped in a `data` field (e.g. `{ code: 10000, data: { candidates: [...] } }`). Ensure your `geminiService.ts` checks `result.data?.candidates` in addition to `result.candidates`.
-5.  **Socket Disconnected (500 Error)**: If you see `Client network socket disconnected` or a `500` error:
-    *   **Enable keepAlive**: Set `keepAlive: true` in your `https.Agent`.
-    *   **Add servername**: Add `servername: targetUrl.hostname` to your `https.Agent` options.
-    *   **Masquerade User-Agent**: Add a browser-like `User-Agent` header to bypass WAFs blocking axios.
-    *   **See the updated `server.js` code pattern above.**
+### C. 自动化脚本 (Automation Script)
+1.  **依赖自检**: 脚本启动前应检查 `node_modules`，若缺失核心依赖则自动触发 `npm install`。
+2.  **并行执行**: 使用 `child_process` 的 `spawn` 同时启动 Backend 和 Frontend，并接管 SIGINT 信号实现优雅退出。
 
-5.  **Timeout / Connection Failed (ETIMEDOUT)**:
-    *   **Cause**: The upstream server (configured in `TARGET_BASE_URL`) is not reachable. This is usually due to firewall, VPN, or network restrictions.
-    *   **Solution**:
-        *   Check if you can reach the `TARGET_BASE_URL` from your browser or via `curl`.
-        *   If using a VPN, ensure it allows traffic to the target IP.
-        *   The provided `server.js` now includes **automatic retry logic**. Check server logs to see if it retries.
-6.  **Check Proxy Port**: Ensure the frontend is calling the correct proxy server.
+---
 
-### Common Pitfalls
-*   **Tailwind CSS**: Use v3 (`npm install -D tailwindcss@3 postcss autoprefixer`) to avoid PostCSS plugin errors common in v4 with standard configurations.
+## 🚨 故障自愈 (Troubleshooting Logic)
+
+当遇到报错时，Agent 应尝试以下修复策略：
+
+*   **端口被占用 (EADDRINUSE)**: 自动尝试 `PORT + 1`，并同步更新 `.env` 和前端配置。
+*   **跨域被拦 (CORS Error)**: 检查后端 `OPTIONS` 路由定义，确认是否使用了正则匹配。
+*   **连接重置 (Socket Hang Up)**: 检查 `AUTH_SECRET` 是否正确，或上游是否开启了 WAF（尝试伪造 User-Agent）。
+
