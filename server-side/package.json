@@ -1,0 +1,25 @@
+{
+    "name": "gemini-proxy-https",
+    "version": "2.0.0",
+    "description": "HTTPS proxy for Gemini API with auto-process management",
+    "main": "proxy.js",
+    "scripts": {
+        "setup": "npm install",
+        "start": "pm2 start proxy.js --name 'gemini-proxy' --time",
+        "stop": "pm2 stop gemini-proxy",
+        "restart": "pm2 restart gemini-proxy",
+        "logs": "pm2 logs gemini-proxy",
+        "list": "pm2 list",
+        "save": "pm2 save",
+        "kill": "pm2 delete gemini-proxy"
+    },
+    "dependencies": {
+        "express": "^4.18.2",
+        "http-proxy-middleware": "^2.0.6",
+        "pm2": "^5.3.0"
+    },
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "license": "MIT"
+}

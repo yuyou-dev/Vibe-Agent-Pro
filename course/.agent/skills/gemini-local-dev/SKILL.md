@@ -85,3 +85,44 @@ Agent 生成代码时，必须严格遵守以下技术规范：
 *   **跨域被拦 (CORS Error)**: 检查后端 `OPTIONS` 路由定义，确认是否使用了正则匹配。
 *   **连接重置 (Socket Hang Up)**: 检查 `AUTH_SECRET` 是否正确，或上游是否开启了 WAF（尝试伪造 User-Agent）。
 
+
+## 示例代码
+#### Implementation Pattern
+Use native `fetch` to call your local proxy.
+
+```typescript
+// services/geminiService.ts
+const PROXY_URL = "http://localhost:8080/api/generate";
+
+export async function generateContent(model: string, prompt: string, imageBase64?: string) {
+  const payload = {
+    model: model, // e.g., "gemini-3-pro-image-preview"
+    contents: [{
+      parts: [
+        { text: prompt },
+        // Inline data for images
+        ...(imageBase64 ? [{ inlineData: { mimeType: "image/jpeg", data: imageBase64 } }] : [])
+      ]
+    }],
+    config: {
+        // Add generation config here
+    }
+  };
+
+  const response = await fetch(PROXY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) throw new Error("Proxy request failed");
+  
+  const result = await response.json();
+  
+  // NOTE: Check for 'data' wrapper if upstream API changes structure
+  // Some mirrors return { data: { candidates: [...] } }
+  const candidates = result.candidates || result.data?.candidates;
+  
+  return candidates;
+}
+```
