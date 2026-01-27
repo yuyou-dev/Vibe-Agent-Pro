@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const https = require('https');
@@ -13,11 +14,11 @@ const TARGET_URL = 'https://generativelanguage.googleapis.com';
 // 🔑 核心机密配置 (都在这里)
 // ==========================================
 
-// 1. 你的 Google Gemini API Key (后端独享，前端不需要知道)
-const GOOGLE_API_KEY = 'AIza---';
+// 1. 你的 Google Gemini API Key (从 .env 读取)
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
-// 2. 鉴权签名密码 (用于验证前端请求合法性)
-const AUTH_SECRET = '';
+// 2. 鉴权签名密码 (从 .env 读取)
+const AUTH_SECRET = process.env.AUTH_SECRET;
 
 // 3. 超时时间 (10分钟)
 const TIMEOUT = 600000;
@@ -101,7 +102,6 @@ const apiProxy = createProxyMiddleware({
 
     onProxyRes: (proxyRes) => {
         proxyRes.headers['Access-Control-Allow-Origin'] = '*';
-        proxyReq.setHeader('Connection', 'keep-alive');
     },
     onError: (err, req, res) => {
         console.error('Proxy Error:', err.message);
