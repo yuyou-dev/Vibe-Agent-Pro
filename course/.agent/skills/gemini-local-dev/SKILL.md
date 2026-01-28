@@ -1,7 +1,7 @@
 ---
 # 技能元数据
-name: Gemini Local Dev Proxy Protocol v2
-description: Gemini本地开发环境一键部署协议（精简版）
+name: Gemini Local Dev Proxy Protocol
+description: Gemini本地开发环境一键部署协议
 triggers:
   - scenario: "一键初始化Gemini本地运行环境"
   - scenario: "创建本地代理服务器调用Gemini API"
@@ -14,40 +14,151 @@ parameters:
     required: true
 ---
 
+# 🛑 强制执行协议 (ENFORCEMENT PROTOCOL)
+**在编写或修改任何代码（如 server.cjs, .env, index.tsx）之前，必须严格执行以下检查：**
+
+1. **检查动作**：本轮对话是否已经运行过 `scripts/gemini_api_analyzer.py`？
+2. **检查产物**：当前目录下是否存在 `gemini_api_analysis.json`？
+
+**逻辑锁**：
+- 如果上述答案为 **否**：你 **被禁止 (PROHIBITED)** 编写任何业务代码。你 **必须 (MUST)** 优先调用 `run_command` 运行分析脚本。
+- **任何跳过此步骤直接写代码的行为，均视为严重违反安全协议。**
+
 # Gemini 本地开发环境部署协议
 
 ## 📁 架构
 
 ```
-前端 → server.cjs(代理) → aidev后端 → Gemini API
+前端 → server.cjs(代理) → 后端 → Gemini API
 ```
 
 ---
 
-## 🔧 配置文件
+## 🛑 关键前置步骤 (Critical)
 
-### `.env`
-```env
-AUTH_SECRET=your_secret_here
-TARGET_BASE_URL=your_target_url_here
-PORT=your_port_here
+> [!IMPORTANT]
+> **在进行任何代码修改或重构前，必须先运行分析工具！**
+> 
+> 该工具能识别特殊的 API 用法并生成正确的标准模板，避免因手动推断导致的错误。
+
+---
+
+## 🚀 使用流程
+
+1. **自动代码分析** → 运行 [`scripts/gemini_api_analyzer.py`]
+自动分析代码，生成 REST 调用示例
+   ```bash
+   cd /path/to/project
+   python .agent/skills/gemini-local-dev/scripts/gemini_api_analyzer.py
+   ```
+   分析器会自动：
+   - 扫描源代码找出所有 Gemini API 调用
+   - 从 [`resources/gemini_models_config.json`](./resources/gemini_models_config.json) 加载模型配置
+   - 匹配对应的模型和参数
+   - 生成完整的 REST 调用示例和响应示例
+   - 输出到 `gemini_api_analysis.md` 和 `gemini_api_analysis.json`
+
+2. **查看分析结果** → 检查生成的报告，了解每个 API 调用的具体实现
+
+3. **REST 改造规划** → 基于分析结果，规划改造方案
+
+4. **替换域名** → 将 Gemini 原始域名替换为你的代理域名
+
+5. **添加鉴权** → 在请求头中添加签名 `x-sign`, `x-time`, `x-nonce`
+
+6. **部署代理服务器** → 参考下方 "server.cjs 实现指南" 搭建代理
+
+7. **配置前端** → 参考下方 "前端配置指南" 完成前端对接
+
+---
+
+## 📡 Gemini REST API 参考文档
+
+完整的 REST API 调用示例由分析器自动生成，基于实际代码中使用到的模型。
+
+如需了解所有可用模型的详细配置，请查看 [`resources/gemini_models_config.json`](./resources/gemini_models_config.json)
+
+---
+
+## 🔄 域名替换与鉴权配置
+
+### 步骤 1: 替换域名
+
+将 Gemini 官方 API 的域名替换为你的代理域名：
+
+```bash
+# 原始 Gemini API 域名
+https://generativelanguage.googleapis.com/v1beta/models/...
+# ↓
+# 替换为你的代理域名
+http://localhost:your_port/v1beta/models/...
+# 或
+https://your-proxy-domain.com/v1beta/models/...
 ```
 
-### 前端 API 地址
+### 步骤 2: 添加鉴权签名
+
+在请求头中添加鉴权信息（替代官方的 `x-goog-api-key`）：
+
+```javascript
+// 生成签名
+const crypto = require('crypto');
+const timestamp = Math.floor(Date.now() / 1000).toString(); // 秒级时间戳
+const nonce = Math.random().toString(36).substring(2, 15);
+const sign = crypto.createHash('md5')
+  .update(AUTH_SECRET + timestamp + nonce)
+  .digest('hex');
+
+// 请求头
+headers: {
+  'x-sign': sign,
+  'x-time': timestamp,
+  'x-nonce': nonce
+}
+```
+
+### 完整示例（前端 fetch 调用）
 
 ```typescript
-// services/geminiService.ts
-const API_BASE_URL = "http://localhost:your_port_here/v1beta/models/";
+const crypto = require('crypto');
+
+function generateAuthHeaders(authSecret: string) {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const nonce = Math.random().toString(36).substring(2, 15);
+  const sign = crypto.createHash('md5')
+    .update(authSecret + timestamp + nonce)
+    .digest('hex');
+
+  return {
+    'x-sign': sign,
+    'x-time': timestamp,
+    'x-nonce': nonce
+  };
+}
+
+// 使用示例
+const response = await fetch('http://localhost:3000/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    ...generateAuthHeaders('your_auth_secret')
+  },
+  body: JSON.stringify({
+    contents: [{ parts: [{ text: "Hello" }] }]
+  })
+});
 ```
 
 ---
 
-## ⚠️ server.cjs 关键要点
+## 🔧 代理服务器实现指南 (Node.js 示例)
 
 ### 1. 必须使用原生 `https.request`
 **不要**使用 `http-proxy-middleware`（有 body 处理 bug）
 
-### 2. Body 解析
+### 2. 关键中间件 (Body 解析 & CORS)
+
+**Body 解析：**
 ```javascript
 app.use(express.json({
   limit: '50mb',
@@ -55,6 +166,17 @@ app.use(express.json({
     req.rawBody = buf.toString(encoding || 'utf8'); // 保存原始 body
   }
 }));
+```
+
+**CORS 配置 (⚠️ 必加，否则前端无法调用)：**
+```javascript
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); 
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, x-sign, x-time, x-nonce');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  next();
+});
 ```
 
 ### 3. 鉴权签名（⚠️ 时间戳必须用秒）
@@ -76,7 +198,8 @@ req.authHeaders = {
 
 ### 4. 响应与请求头清理 (关键点)
 ```javascript
-// ✅ 正确：清理干扰头，特别是 accept-encoding 以防止 Gzip 引起乱码
+// ✅ 正确：清理干扰头 (关键！否则会导致 500 Socket Hangup)
+delete options.headers['host'];            // ⚠️ 必须删除 host，避免与目标域名冲突
 delete options.headers['content-length'];
 delete options.headers['connection'];
 delete options.headers['accept-encoding']; // 强制返回明文 JSON
@@ -104,20 +227,6 @@ server.setTimeout(500000);
 
 ## 📝 前端关键注意事项
 
-### 字段命名规则
-
-**请求（发送到API）必须使用下划线命名：**
-```typescript
-// ✅ 正确
-{
-  inline_data: { mime_type: "image/jpeg", data: "..." }
-}
-
-// ❌ 错误
-{
-  inlineData: { mimeType: "image/jpeg", data: "..." }
-}
-```
 
 **响应（从API返回）使用驼峰命名：**
 ```typescript
@@ -166,6 +275,41 @@ requestBody.imageConfig = { ... };
 
 ---
 
+## ⚙️ 前端开发服务器配置 (Vite Config)
+
+必须在 `vite.config.js` (或 `vite.config.ts`) 中配置 server 代理，以解决跨域和 host 限制问题：
+
+```javascript
+  allowedHosts: true,
+  proxy: {
+    '/v1beta': {
+      target: 'http://localhost:xxxx',//开启的后端接口
+      changeOrigin: true,
+      secure: false,
+    }
+  }
+```
+
+---
+
+## 🔧 配置文件
+
+### `.env`
+```env
+AUTH_SECRET=your_secret_here
+TARGET_BASE_URL=your_target_url_here
+PORT=your_port_here
+```
+
+### 前端 API 地址
+
+```typescript
+// services/geminiService.ts
+const API_BASE_URL = "http://localhost:your_port_here/v1beta/models/";
+```
+
+---
+
 ## 📋 签名验证规则
 
 | 项目 | 值 |
@@ -177,41 +321,16 @@ requestBody.imageConfig = { ... };
 
 ---
 
-## 📚 API 参考
-
-详细的 REST API 调用方式，请参考 `resources/gemini_documation/`：
-
-- **图片生成**: `gemini图片生成文档.md` - 查找 `### REST` 章节
-- **图片理解**: `gemini图片理解文档.md`
-
----
-
 ## 🐛 常见问题速查
 
 | 问题 | 解决方案 |
 |------|---------|
 | 401 Request expired | 使用秒级时间戳 `Math.floor(Date.now() / 1000)` |
 | 404 Not Found | 检查 API 路径是否为 `/v1beta/models/` |
-| 400 Unknown name "config" | 使用 `generationConfig` 而不是 `config` |
-| 400 错误 | 使用 `inline_data` / `mime_type` 下划线命名 |
-| 无图片数据 | 兼容两种命名方式（响应用驼峰） |
 | 请求挂起 | 用原生 `https.request` |
 | 504 超时 | 设置 `timeout: 500000` |
+| CORS Blocked | 在 server.cjs 添加 CORS Middleware (Access-Control-Allow-Origin: *) |
+| 500 socket hang up | 请求头冲突，需在 server.cjs 中 `delete headers['host']` |
 
 ---
 
-## ⚠️ 严格重构边界 (Strict Refactoring Boundaries)
-
-在应用本 Skill 进行代码重构时，开发者（Agent）必须遵守：
-
-1.  **模型名称绝对冻结**:
-    *   ❌ 禁止修改：`gemini-3-pro`, `gemini-2.5-flash` → `gemini-1.5-flash`
-    *   ✅ 原样保留：即便模型名称看起来像是“未来版本”或“自定义别名”，也**必须原样保留**。因为 Proxy 后端可能对这些名称做了特殊路由映射。
-    *   💡 **必须查阅文档**：在判定模型是否可用前，必须先查阅 `resources/gemini_documation/` 下的最新文档。
-
-2.  **Prompt 零修改**:
-    *   移动 Prompt 到新文件时，必须字符级（Character-level）一致，禁止“优化”、“压缩”或“修正语法”。
-    *   任何对 Prompt 的修改都属于业务逻辑变更，不属于环境初始化重构范围。
-
-3.  **配置即常量 (Configuration as Constant)**:
-    *   任何字符串字面量（String Literals），尤其是涉及 `model`, `endpoint`, `system_instruction` 的，除非任务明确要求"升级模型"，否则在重构任务中应视为**不可变常量**。

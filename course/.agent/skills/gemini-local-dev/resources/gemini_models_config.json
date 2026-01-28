@@ -1,0 +1,763 @@
+{
+  "api_base": {
+    "v1beta": "https://generativelanguage.googleapis.com/v1beta",
+    "v1alpha": "https://generativelanguage.googleapis.com/v1alpha",
+    "auth_header": "x-goog-api-key",
+    "env_key": "GEMINI_API_KEY"
+  },
+  "models": {
+    "gemini-2.0-flash-exp": {
+      "name": "Gemini 2.0 Flash Experimental",
+      "category": "text_generation",
+      "description": "快速文本生成模型，适用于对话、写作、翻译等",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "default_params": {
+        "temperature": 0.7,
+        "maxOutputTokens": 1024,
+        "topP": 0.9,
+        "topK": 40
+      },
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "temperature": "{{temperature}}",
+          "maxOutputTokens": "{{maxOutputTokens}}"
+        }
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "生成的文本内容..."
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP",
+            "avgLogprobs": -0.1
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 10,
+          "candidatesTokenCount": 50,
+          "totalTokenCount": 60
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "创意写作",
+        "内容摘要",
+        "文本翻译",
+        "问答系统",
+        "代码生成"
+      ],
+      "keywords": [
+        "text",
+        "chat",
+        "conversation",
+        "write",
+        "generate"
+      ]
+    },
+    "gemini-2.5-flash": {
+      "name": "Gemini 2.5 Flash",
+      "category": "multimodal_understanding",
+      "description": "多模态理解模型，支持图片、音频、视频、文档理解",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "supported_media": {
+        "image": [
+          "image/jpeg",
+          "image/png",
+          "image/webp",
+          "image/gif"
+        ],
+        "audio": [
+          "audio/wav",
+          "audio/mp3",
+          "audio/flac",
+          "audio/ogg",
+          "audio/m4a"
+        ],
+        "video": [
+          "video/mp4",
+          "video/webm",
+          "video/mov",
+          "video/avi"
+        ],
+        "document": [
+          "application/pdf"
+        ]
+      },
+      "default_params": {
+        "temperature": 0.7,
+        "maxOutputTokens": 1024
+      },
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              },
+              {
+                "inline_data": {
+                  "mimeType": "{{mimeType}}",
+                  "data": "{{base64_data}}"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "分析结果..."
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 280,
+          "candidatesTokenCount": 100,
+          "totalTokenCount": 380
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "图片理解",
+        "音频转录",
+        "视频分析",
+        "文档理解"
+      ],
+      "keywords": [
+        "image",
+        "audio",
+        "video",
+        "document",
+        "pdf",
+        "understand",
+        "analyze",
+        "transcribe"
+      ]
+    },
+    "gemini-2.5-flash-stream": {
+      "name": "Gemini 2.5 Flash Streaming",
+      "category": "streaming",
+      "description": "流式响应，实时逐块返回生成内容",
+      "api_version": "v1beta",
+      "endpoint": "streamGenerateContent",
+      "default_params": {
+        "temperature": 0.7
+      },
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ]
+      },
+      "response_example": [
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "从"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "前"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "有座"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "山"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": "。"
+                  }
+                ]
+              },
+              "finishReason": "STOP"
+            }
+          ]
+        }
+      ],
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "实时聊天",
+        "代码助手",
+        "流式对话"
+      ],
+      "keywords": [
+        "stream",
+        "realtime",
+        "chat",
+        "conversation"
+      ]
+    },
+    "gemini-2.5-flash-image": {
+      "name": "Gemini 2.5 Flash Image",
+      "category": "image_generation",
+      "description": "基础图片生成和编辑模型",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "default_params": {},
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ]
+      },
+      "request_template_edit": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{edit_instruction}}"
+              },
+              {
+                "inline_data": {
+                  "mimeType": "image/jpeg",
+                  "data": "{{base64_image}}"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "inlineData": {
+                    "mimeType": "image/png",
+                    "data": "BASE64_IMAGE_DATA..."
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 50,
+          "candidatesTokenCount": 1000,
+          "totalTokenCount": 1050
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].inlineData.data",
+      "use_cases": [
+        "图片生成",
+        "图片编辑",
+        "风格修改"
+      ],
+      "keywords": [
+        "image",
+        "generate",
+        "create",
+        "edit",
+        "photo",
+        "picture"
+      ]
+    },
+    "gemini-2.5-flash-preview-tts": {
+      "name": "Gemini 2.5 Flash Preview TTS",
+      "category": "text_to_speech",
+      "description": "语音合成模型，支持单说话人和多说话人模式",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "default_params": {
+        "responseModalities": [
+          "AUDIO"
+        ]
+      },
+      "request_template_single": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{text}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseModalities": [
+            "AUDIO"
+          ],
+          "speechConfig": {
+            "voiceConfig": {
+              "prebuiltVoiceConfig": {
+                "voiceName": "{{voice_name}}"
+              }
+            }
+          }
+        }
+      },
+      "request_template_multi": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{conversation}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseModalities": [
+            "AUDIO"
+          ],
+          "speechConfig": {
+            "multiSpeakerVoiceConfig": {
+              "speakerVoiceConfigs": [
+                {
+                  "speaker": "{{speaker1}}",
+                  "voiceConfig": {
+                    "prebuiltVoiceConfig": {
+                      "voiceName": "{{voice1}}"
+                    }
+                  }
+                },
+                {
+                  "speaker": "{{speaker2}}",
+                  "voiceConfig": {
+                    "prebuiltVoiceConfig": {
+                      "voiceName": "{{voice2}}"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "voices": [
+        {
+          "name": "Kore",
+          "style": "Firm"
+        },
+        {
+          "name": "Puck",
+          "style": "Upbeat"
+        },
+        {
+          "name": "Zephyr",
+          "style": "Bright"
+        },
+        {
+          "name": "Charon",
+          "style": "Informative"
+        },
+        {
+          "name": "Fenrir",
+          "style": "Excitable"
+        },
+        {
+          "name": "Leda",
+          "style": "Youthful"
+        }
+      ],
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "inlineData": {
+                    "data": "BASE64_PCM_AUDIO_DATA..."
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "extract_path": "candidates[0].content.parts[0].inlineData.data",
+      "use_cases": [
+        "语音生成",
+        "对话配音",
+        "有声书"
+      ],
+      "keywords": [
+        "tts",
+        "speech",
+        "audio",
+        "voice",
+        "speak",
+        "pronounce"
+      ]
+    },
+    "gemini-3-pro-preview": {
+      "name": "Gemini 3 Pro Preview",
+      "category": "advanced_reasoning",
+      "description": "高级推理模型，支持复杂推理、结构化输出、媒体分辨率控制",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "context_window": {
+        "input": 1000000,
+        "output": 64000
+      },
+      "default_params": {
+        "temperature": 1.0
+      },
+      "request_template_reasoning": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "thinkingConfig": {
+            "thinkingLevel": "{{thinking_level}}"
+          }
+        }
+      },
+      "request_template_structured": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseMimeType": "application/json",
+          "responseJsonSchema": "{{json_schema}}"
+        },
+        "tools": [
+          {
+            "googleSearch": {}
+          }
+        ]
+      },
+      "request_template_media_resolution": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              },
+              {
+                "inline_data": {
+                  "mimeType": "image/jpeg",
+                  "data": "{{base64_data}}",
+                  "mediaResolution": {
+                    "level": "{{resolution_level}}"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "thinking_levels": {
+        "low": "最小化延迟和成本",
+        "high": "最大化推理深度（默认）"
+      },
+      "resolution_levels": {
+        "low": {
+          "image_tokens": 280,
+          "video_tokens": 70
+        },
+        "medium": {
+          "image_tokens": 560,
+          "video_tokens": 70
+        },
+        "high": {
+          "image_tokens": 1120,
+          "video_tokens": 280
+        }
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "{\"result\": \"structured output\"}"
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 100,
+          "candidatesTokenCount": 200,
+          "totalTokenCount": 300
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "复杂推理",
+        "结构化输出",
+        "精细媒体分析"
+      ],
+      "keywords": [
+        "reasoning",
+        "logic",
+        "math",
+        "complex",
+        "structured",
+        "json",
+        "schema"
+      ]
+    },
+    "gemini-3-flash-preview": {
+      "name": "Gemini 3 Flash Preview",
+      "category": "multimodal_function_calling",
+      "description": "支持多模态函数响应，Pro级别智能，Flash级别速度",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "context_window": {
+        "input": 1000000,
+        "output": 64000
+      },
+      "default_params": {
+        "temperature": 1.0
+      },
+      "request_template": {
+        "contents": [
+          {
+            "role": "user",
+            "parts": [
+              {
+                "functionResponse": {
+                  "name": "{{function_name}}",
+                  "response": {
+                    "{{response_key}}": {
+                      "$ref": "{{reference}}"
+                    }
+                  },
+                  "parts": [
+                    {
+                      "inline_data": {
+                        "displayName": "{{display_name}}",
+                        "mimeType": "{{mimeType}}",
+                        "data": "{{base64_data}}"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "函数调用结果..."
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 50,
+          "candidatesTokenCount": 100,
+          "totalTokenCount": 150
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "函数调用",
+        "订单系统",
+        "数据检索"
+      ],
+      "keywords": [
+        "function",
+        "call",
+        "tool",
+        "multimodal",
+        "response"
+      ]
+    },
+    "gemini-3-pro-image-preview": {
+      "name": "Gemini 3 Pro Image Preview",
+      "category": "advanced_image_generation",
+      "description": "高级图片生成模型，支持4K分辨率、Google搜索集成、会话式编辑",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "context_window": {
+        "input": 65000,
+        "output": 32000
+      },
+      "default_params": {
+        "aspectRatio": "16:9",
+        "imageSize": "2K"
+      },
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              },
+              {
+                "inline_data": {
+                  "mimeType": "image/jpeg",
+                  "data": "{{base64_image}}"
+                }
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "imageConfig": {
+            "aspectRatio": "{{aspect_ratio}}",
+            "imageSize": "{{image_size}}"
+          }
+        },
+        "tools": [
+          {
+            "googleSearch": {}
+          }
+        ]
+      },
+      "aspect_ratios": [
+        "1:1",
+        "2:3",
+        "3:2",
+        "3:4",
+        "4:3",
+        "4:5",
+        "5:4",
+        "9:16",
+        "16:9",
+        "21:9"
+      ],
+      "image_sizes": [
+        "1K",
+        "2K",
+        "4K"
+      ],
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "inlineData": {
+                    "mimeType": "image/png",
+                    "data": "BASE64_IMAGE_DATA..."
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 100,
+          "candidatesTokenCount": 2000,
+          "totalTokenCount": 2100
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].inlineData.data",
+      "use_cases": [
+        "4K图片生成",
+        "信息图制作",
+        "带文字图片"
+      ],
+      "keywords": [
+        "4k",
+        "high-res",
+        "search",
+        "image",
+        "generate"
+      ]
+    }
+  },
+  "response_finish_reasons": {
+    "STOP": "正常完成",
+    "MAX_TOKENS": "达到最大token数",
+    "SAFETY": "因安全原因停止",
+    "RECITATION": "因引用原因停止",
+    "IMAGE_SAFETY": "图片安全原因停止",
+    "PROHIBITED_CONTENT": "违规内容停止"
+  }
+}
