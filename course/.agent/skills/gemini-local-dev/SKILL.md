@@ -1,336 +1,111 @@
 ---
-# 技能元数据
-name: Gemini Local Dev Proxy Protocol
-description: Gemini本地开发环境一键部署协议
-triggers:
-  - scenario: "一键初始化Gemini本地运行环境"
-  - scenario: "创建本地代理服务器调用Gemini API"
-parameters:
-  - name: auth_secret
-    type: string
-    required: true
-  - name: target_url
-    type: string
-    required: true
+name: Gemini Local Dev Proxy Protocol (Universal Edition)
+description: 阶段 1：本地开发环境初始化。强制运行 API 分析脚本，根据检测到的具体模型，将前端 SDK 动态替换为原生的 fetch 请求，并启动包含安全签名的本地透明代理。
 ---
 
-# 🛑 强制执行协议 (ENFORCEMENT PROTOCOL)
-**在编写或修改任何代码（如 server.cjs, .env, index.tsx）之前，必须严格执行以下检查：**
+# 🚀 阶段 1：多模型网络打通与鉴权代理
 
-1. **检查动作**：本轮对话是否已经运行过 `scripts/gemini_api_analyzer.py`？
-2. **检查产物**：当前目录下是否存在 `gemini_api_analysis.json`？
+当前项目使用了 `@google/genai` 原生 SDK。本阶段目标是将网络请求切换为本地透明代理，注入自定义鉴权签名，同时**完美动态适配项目中使用的任何 Gemini 模型**（视觉、文本、语音等）。
 
-**逻辑锁**：
-- 如果上述答案为 **否**：你 **被禁止 (PROHIBITED)** 编写任何业务代码。你 **必须 (MUST)** 优先调用 `run_command` 运行分析脚本。
-- **任何跳过此步骤直接写代码的行为，均视为严重违反安全协议。**
+## 🛑 绝对安全红线 (Security Rules)
+1. **强制前置分析**：严禁凭空猜测 API 结构。不同的模型 REST 参数完全不同，必须依赖分析脚本的产出。
+2. **禁止在前端写签名**：严禁在前端代码（如 `src/`）中引入 Node.js 的 `crypto` 模块或计算 `x-sign`。前端 Vite 环境会因此彻底崩溃。鉴权只能在 Node.js 代理中完成。
+3. **Node 版本要求**：由于代理依赖了原生的 `fetch` API，执行代理的 Node.js 环境必须 **>= 18.0.0**。
 
-# Gemini 本地开发环境部署协议
+## 📋 执行清单 (SOP) - 必须严格按顺序执行
 
-## 📁 架构
+### [ ] 1. 运行 API 动态分析脚本 (Critical)
+- 必须在终端运行：`python agent/skills/gemini-local-dev/scripts/gemini_api_analyzer.py`
+- 仔细阅读生成的 `gemini_api_analysis.md` 和 `gemini_api_analysis.json`。
+- 提取关键信息：
+  1. 当前项目使用的模型名称 (如 `gemini-3-pro-image-preview` 或 `gemini-2.5-flash-preview-tts` 等)。
+  2. 对应的 Endpoint (如 `generateContent`)。
+  3. **推荐的 REST Payload 结构**（⚠️ 极度重要：你组装 fetch 时必须严格照抄报告中的 `request_template` 或 `REST 调用示例`）。
 
-```
-前端 → server.cjs(代理) → 后端 → Gemini API
-```
+### [ ] 2. 创建通用透明签名代理 (`server.cjs`)
+- 在项目根目录创建 `server.cjs`。
+- **必须完整复制以下代码（它是模型无关的透明代理，严禁修改内部的签名逻辑）：**
 
----
-
-## 🛑 关键前置步骤 (Critical)
-
-> [!IMPORTANT]
-> **在进行任何代码修改或重构前，必须先运行分析工具！**
-> 
-> 该工具能识别特殊的 API 用法并生成正确的标准模板，避免因手动推断导致的错误。
-
----
-
-## 🚀 使用流程
-
-1. **自动代码分析** → 运行 [`scripts/gemini_api_analyzer.py`]
-自动分析代码，生成 REST 调用示例
-   ```bash
-   cd /path/to/project
-   python .agent/skills/gemini-local-dev/scripts/gemini_api_analyzer.py
-   ```
-   分析器会自动：
-   - 扫描源代码找出所有 Gemini API 调用
-   - 从 [`resources/gemini_models_config.json`](./resources/gemini_models_config.json) 加载模型配置
-   - 匹配对应的模型和参数
-   - 生成完整的 REST 调用示例和响应示例
-   - 输出到 `gemini_api_analysis.md` 和 `gemini_api_analysis.json`
-
-2. **查看分析结果** → 检查生成的报告，了解每个 API 调用的具体实现
-
-3. **REST 改造规划** → 基于分析结果，规划改造方案
-
-4. **替换域名** → 将 Gemini 原始域名替换为你的代理域名
-
-5. **添加鉴权** → 在请求头中添加签名 `x-sign`, `x-time`, `x-nonce`
-
-6. **部署代理服务器** → 参考下方 "server.cjs 实现指南" 搭建代理
-
-7. **配置前端** → 参考下方 "前端配置指南" 完成前端对接
-
----
-
-## 📡 Gemini REST API 参考文档
-
-完整的 REST API 调用示例由分析器自动生成，基于实际代码中使用到的模型。
-
-如需了解所有可用模型的详细配置，请查看 [`resources/gemini_models_config.json`](./resources/gemini_models_config.json)
-
----
-
-## 🔄 域名替换与鉴权配置
-
-### 步骤 1: 替换域名
-
-将 Gemini 官方 API 的域名替换为你的代理域名：
-
-```bash
-# 原始 Gemini API 域名
-https://generativelanguage.googleapis.com/v1beta/models/...
-# ↓
-# 替换为你的代理域名
-http://localhost:your_port/v1beta/models/...
-# 或
-https://your-proxy-domain.com/v1beta/models/...
-```
-
-### 步骤 2: 添加鉴权签名
-
-在请求头中添加鉴权信息（替代官方的 `x-goog-api-key`）：
-
-```javascript
-// 生成签名
+\`\`\`javascript
+const express = require('express');
+const cors = require('cors');
 const crypto = require('crypto');
-const timestamp = Math.floor(Date.now() / 1000).toString(); // 秒级时间戳
-const nonce = Math.random().toString(36).substring(2, 15);
-const sign = crypto.createHash('md5')
-  .update(AUTH_SECRET + timestamp + nonce)
-  .digest('hex');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env.local') });
 
-// 请求头
-headers: {
-  'x-sign': sign,
-  'x-time': timestamp,
-  'x-nonce': nonce
-}
-```
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
 
-### 完整示例（前端 fetch 调用）
+// ⚠️ 修复 Express 5 PathError：使用 app.use 挂载前缀，绝对禁止使用 app.post('/*')
+app.use('/proxy/gemini', async (req, res) => {
+    // 仅拦截 POST 业务请求 (前端发出的 OPTIONS 跨域预检请求已被上方的 cors() 中间件处理)
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-```typescript
-const crypto = require('crypto');
+    try {
+        const secret = process.env.AUTH_SECRET;
+        const targetBaseUrl = process.env.TARGET_BASE_URL;
+        if (!secret || !targetBaseUrl) throw new Error("Missing AUTH_SECRET or TARGET_BASE_URL in .env.local");
 
-function generateAuthHeaders(authSecret: string) {
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const nonce = Math.random().toString(36).substring(2, 15);
-  const sign = crypto.createHash('md5')
-    .update(authSecret + timestamp + nonce)
-    .digest('hex');
+        const timestamp = Math.floor(Date.now() / 1000).toString(); // 必须秒级
+        const nonce = Math.random().toString(36).substring(2, 15);
+        const sign = crypto.createHash('md5').update(secret + timestamp + nonce).digest('hex');
 
-  return {
-    'x-sign': sign,
-    'x-time': timestamp,
-    'x-nonce': nonce
-  };
-}
+        // 💡 核心魔法：req.url 在 app.use 中会自动剥离 '/proxy/gemini' 前缀
+        // 例如 req.url 将直接是: '/v1beta/models/gemini-xxx:generateContent'
+        const baseUrl = targetBaseUrl.replace(/\\/$/, ''); // 确保末尾没有斜杠
+        const targetUrl = \`\${baseUrl}\${req.url}\`;
 
-// 使用示例
-const response = await fetch('http://localhost:3000/v1beta/models/gemini-2.0-flash-exp:generateContent', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    ...generateAuthHeaders('your_auth_secret')
-  },
-  body: JSON.stringify({
-    contents: [{ parts: [{ text: "Hello" }] }]
-  })
-});
-```
+        const response = await fetch(targetUrl, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'x-sign': sign, 
+                'x-time': timestamp, 
+                'x-nonce': nonce 
+            },
+            body: JSON.stringify(req.body) // 原样透传前端发来的 Payload
+        });
+        
+        // 容错处理：防止上游网关出错返回 HTML 导致 JSON 解析异常
+        let data;
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+            data = await response.json();
+        } else {
+            data = await response.text();
+            console.error("[Proxy Raw Response]:", data);
+        }
 
----
+        if (!response.ok) {
+            console.error(`[Proxy Target Error] Status: ${response.status}`, data);
+        }
 
-## 🔧 代理服务器实现指南 (Node.js 示例)
-
-### 1. 必须使用原生 `https.request`
-**不要**使用 `http-proxy-middleware`（有 body 处理 bug）
-
-### 2. 关键中间件 (Body 解析 & CORS)
-
-**Body 解析：**
-```javascript
-app.use(express.json({
-  limit: '50mb',
-  verify: (req, res, buf, encoding) => {
-    req.rawBody = buf.toString(encoding || 'utf8'); // 保存原始 body
-  }
-}));
-```
-
-**CORS 配置 (⚠️ 必加，否则前端无法调用)：**
-```javascript
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*'); 
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, x-sign, x-time, x-nonce');
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  next();
-});
-```
-
-### 3. 鉴权签名（⚠️ 时间戳必须用秒）
-
-```javascript
-// ✅ 正确：使用秒级时间戳
-const timestamp = Math.floor(Date.now() / 1000).toString();
-const nonce = Math.random().toString(36).substring(2, 15);
-const sign = crypto.createHash('md5')
-  .update(AUTH_SECRET + timestamp + nonce)
-  .digest('hex');
-
-req.authHeaders = {
-  'x-nonce': nonce,
-  'x-time': timestamp,     // 秒级时间戳
-  'x-sign': sign
-};
-```
-
-### 4. 响应与请求头清理 (关键点)
-```javascript
-// ✅ 正确：清理干扰头 (关键！否则会导致 500 Socket Hangup)
-delete options.headers['host'];            // ⚠️ 必须删除 host，避免与目标域名冲突
-delete options.headers['content-length'];
-delete options.headers['connection'];
-delete options.headers['accept-encoding']; // 强制返回明文 JSON
-
-res.status(proxyRes.statusCode);
-res.set('Content-Type', proxyRes.headers['content-type'] || 'application/json');
-```
-
-### 5. 路由兼容性 (Express 5+)
-```javascript
-// ✅ 正确：使用 app.use 捕获所有路径，避免 Express 5 中 '*' 的 PathError
-app.use((req, res) => { ... });
-
-// ❌ 错误：app.all('*') 在新版本中可能报错
-```
-
-### 6. 超时配置
-```javascript
-const options = { timeout: 500000, ... };
-const server = app.listen(PORT);
-server.setTimeout(500000);
-```
-
----
-
-## 📝 前端关键注意事项
-
-
-**响应（从API返回）使用驼峰命名：**
-```typescript
-// ✅ 正确
-if (part.inlineData?.data) {
-  const mimeType = part.inlineData.mimeType || 'image/png';
-  image = `data:${mimeType};base64,${part.inlineData.data}`;
-}
-```
-
-### 请求体配置（⚠️ 使用 generationConfig）
-
-```typescript
-const requestBody = {
-  contents: [
-    {
-      role: "user",
-      parts: [
-        { text: "提示词..." },
-        { inline_data: { mime_type: "image/jpeg", data: base64Data } }
-      ]
+        res.status(response.status).json(data);
+    } catch (e) { 
+        console.error("Proxy Exception:", e);
+        res.status(500).json({ error: e.message }); 
     }
-  ],
-  // ✅ 正确：使用 generationConfig 并严格规定 JSON 结构
-  generationConfig: {
-    response_mime_type: "text/plain" // 或 "application/json"
-  }
-};
-```
+});
 
-### 鲁棒性建议 (防止前端崩溃)
+const PORT = process.env.PORT || 3005;
+app.listen(PORT, () => console.log(\`Universal Proxy running on port \${PORT}\`));
+\`\`\`
 
-**在 Prompt 中明确定义返回结构：**
-```typescript
-const prompt = `... 
-IMPORTANT: You must return valid JSON with this structure: 
-{ "title": string, "summary": string, "points": [] } 
-即使 points 为空也必须返回空数组。`;
-```
+### [ ] 3. 动态改造前端 SDK 调用 (`src/` 目录)
+- 移除 `@google/genai` 的导入和实例化。
+- **基于步骤 1 的分析报告**，将原 SDK 调用转换为原生的 `fetch`。
+- **目标 URL 格式**：`http://localhost:3005/proxy/gemini/v1beta/models/【检测到的模型名称】:【对应的Endpoint】`
+- **请求体 (Body)**：必须按照报告中的 `REST 调用示例` 来组装。不要照抄原 SDK 的 config 嵌套层级，一切以分析报告的 JSON 结构为准！
 
-### 禁止使用的字段
-```typescript
-// ❌ 不要使用 imageConfig（不是标准字段）
-requestBody.imageConfig = { ... };
-```
+### [ ] 4. 清理环境与补全依赖 (Stability Fix)
+- 去除 `vite.config.ts` 中的 `define: { 'process.env.API_KEY': ... }` 危险硬编码。
+- 在根目录 `.env.local` 添加 `AUTH_SECRET` 和 `TARGET_BASE_URL`。
+- **强制安装 Node.js 代理运行及进程管理依赖**：使用包管理器（如 `npm install express cors dotenv concurrently`）安装这四个包。
+  *(原因：AiStudio 项目通常只包含 Vite 纯前端依赖。缺失 express 会导致 server.cjs 崩溃；而引入 concurrently 可以有效解决 Vite 开发服务器（特别是 V6+）在后台静默运行时丢失 TTY 焦点导致进程自动退出 (Exit Code 130) 的核心痛点。)*
 
----
-
-## ⚙️ 前端开发服务器配置 (Vite Config)
-
-必须在 `vite.config.js` (或 `vite.config.ts`) 中配置 server 代理，以解决跨域和 host 限制问题：
-
-```javascript
-  allowedHosts: true,
-  proxy: {
-    '/v1beta': {
-      target: 'http://localhost:xxxx',//开启的后端接口
-      changeOrigin: true,
-      secure: false,
-    }
-  }
-```
-
----
-
-## 🔧 配置文件
-
-### `.env`
-```env
-AUTH_SECRET=your_secret_here
-TARGET_BASE_URL=your_target_url_here
-PORT=your_port_here
-```
-
-### 前端 API 地址
-
-```typescript
-// services/geminiService.ts
-const API_BASE_URL = "http://localhost:your_port_here/v1beta/models/";
-```
-
----
-
-## 📋 签名验证规则
-
-| 项目 | 值 |
-|------|-----|
-| 签名算法 | `MD5(AUTH_SECRET + timestamp + nonce)` |
-| 时间戳单位 | **秒** (`Math.floor(Date.now() / 1000)`) |
-| 时间窗口 | ±300 秒（5 分钟） |
-| 请求头 | `x-sign`, `x-time`, `x-nonce` |
-
----
-
-## 🐛 常见问题速查
-
-| 问题 | 解决方案 |
-|------|---------|
-| 401 Request expired | 使用秒级时间戳 `Math.floor(Date.now() / 1000)` |
-| 404 Not Found | 检查 API 路径是否为 `/v1beta/models/` |
-| 请求挂起 | 用原生 `https.request` |
-| 504 超时 | 设置 `timeout: 500000` |
-| CORS Blocked | 在 server.cjs 添加 CORS Middleware (Access-Control-Allow-Origin: *) |
-| 500 socket hang up | 请求头冲突，需在 server.cjs 中 `delete headers['host']` |
-
----
-
+### [ ] 5. 注入一键启动脚本 (Universal Start)
+- 自动修改项目的 `package.json`，在 `scripts` 字段中新增一条聚合启动命令（请勿覆盖原有 `dev`）：
+  `"dev:all": "concurrently \"node server.cjs\" \"npm run dev\""`
+- 启动并测试：指导在此后的工作流中，**统一通过运行 `npm run dev:all` 来启动项目**。
+- 这项机制只需占用一个终端会话，就能同时且稳健地守护 Vite 前端与 Node.js 代理服务，合并输出日志流，彻底消除在跨终端或后台单独启动时引发的前端运行停止或顺序混乱问题。

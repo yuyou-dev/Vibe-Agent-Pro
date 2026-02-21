@@ -750,6 +750,77 @@
         "image",
         "generate"
       ]
+    },
+    "gemini-3.1-pro-preview": {
+      "name": "Gemini 3.1 Pro Preview",
+      "category": "advanced_reasoning",
+      "description": "高级智能推理模型，具备复杂问题解决能力以及强大的代理（agentic）和vibe编程能力",
+      "api_version": "v1beta",
+      "endpoint": "generateContent",
+      "context_window": {
+        "input": 1000000,
+        "output": 64000
+      },
+      "default_params": {
+        "temperature": 1.0
+      },
+      "request_template": {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text": "{{prompt}}"
+              }
+            ]
+          }
+        ],
+        "generationConfig": {
+          "responseMimeType": "application/json",
+          "responseJsonSchema": "{{json_schema}}"
+        },
+        "tools": [
+          {
+            "googleSearch": {}
+          },
+          {
+            "urlContext": {}
+          }
+        ]
+      },
+      "response_example": {
+        "candidates": [
+          {
+            "content": {
+              "parts": [
+                {
+                  "text": "{\"result\": \"structured output\"}"
+                }
+              ],
+              "role": "model"
+            },
+            "finishReason": "STOP"
+          }
+        ],
+        "usageMetadata": {
+          "promptTokenCount": 100,
+          "candidatesTokenCount": 200,
+          "totalTokenCount": 300
+        }
+      },
+      "extract_path": "candidates[0].content.parts[0].text",
+      "use_cases": [
+        "复杂问题解决",
+        "Agent开发",
+        "结构化提取",
+        "带有url和搜索的编程"
+      ],
+      "keywords": [
+        "agentic",
+        "vibe coding",
+        "search",
+        "url",
+        "reasoning"
+      ]
     }
   },
   "response_finish_reasons": {

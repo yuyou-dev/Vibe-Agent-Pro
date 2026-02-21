@@ -1,58 +1,40 @@
 ---
 name: Middleware Logic Isolation (BFF Pattern)
-description: "将简单的本地代理重构为专用的 Node.js 中间层（Backend for Frontend），用于封装核心 AI 逻辑、提示词和敏感配置，使其与前端彻底隔离。"
-version: 1.1.0
+description: 阶段 2：中间层隔离。依据 API 分析报告，将前端暴露的 AI 提示词（Prompt）和特定模型的 Payload 动态组装逻辑完整剥离，移入 Node.js 后端。
 ---
 
-# 🛡️ 中间层逻辑隔离与核心保护 (BFF模式)
+# 🛡️ 阶段 2：中间层逻辑隔离 (BFF)
 
-本 Skill 指导 Agent 将核心业务逻辑和敏感的 AI 提示词（Prompts）从前端客户端分离，迁移到安全的 Node.js 中间层（BFF - Backend for Frontend）。通过这种方式，确保在项目上线时，没有任何知识产权（IP）或原始提示词暴露在浏览器端。
+目标：保护 AI 商业机密。前端将不再包含任何 Prompt 模板、系统指令或特定模型的参数配置，彻底降级为纯业务传参层。
 
-## 🎯 触发指令 (Usage Trigger)
-> "将核心 AI 逻辑重构到中间层。"
-> "隔离后端逻辑。"
+## 📋 执行清单 (SOP)
 
-## 📋 标准操作流程 (SOP)
+### [ ] 1. 回顾 API 分析报告
+- 再次查看根目录的 `gemini_api_analysis.json`。确认该项目使用的模型及其特定的数据结构要求（例如是否需要处理特定的 `generationConfig` 或 `speechConfig`）。
 
-### 第一阶段：分析与设计 (Analysis & Design)
-1.  **识别敏感逻辑**：扫描前端服务文件（如 `services/*.ts`），查找：
-    *   硬编码的模型名称（如 `gemini-2.5-flash`）。
-    *   系统指令（System Instructions）、角色设定（Personas）和复杂的提示词模板。
-    *   API 密钥或敏感配置信息。
-2.  **定义 API 接口**：设计基于业务意图的专用接口，而不是简单的模型透传包装。
-    *   ❌ `POST /api/generate { prompt: "..." }`
-    *   ✅ `POST /api/process/roast { images: [], intensity: "high" }`
+### [ ] 2. 升级并重构后端 (`middleware.cjs`)
+- 将阶段 1 的 `server.cjs` 重命名为 `middleware.cjs`。**保留顶部的 MD5 签名生成代码**。
+- 删除通用的 `/proxy/gemini/*` 透明转发路由。
+- 新建基于业务意图的 API 路由（例如：`app.post('/api/action/generate', ...)`）。
+- ⚠️ **逻辑大转移**：扫描前端负责 AI 调用的文件，将所有的提示词拼接逻辑（Prompt Engineering）、映射字典（如 `getStylePrompt` 等）、以及根据 JSON 报告动态组装 REST Payload 的逻辑，**完整物理剪切**到 `middleware.cjs` 的新路由中。
+- 在后端调用原生 `fetch` 向中转 API 发送带有签名的请求，并根据报告的 `extract_path` 解析响应，将纯净的业务数据返回给前端。
 
-### 第二阶段：中间层实现 (Middleware Implementation)
-1.  **创建中间层文件**：在根目录创建 `middleware.cjs`（注意：如果项目是 `type: "module"`，务必使用 `.cjs` 后缀）。
-    *   引入依赖：`express`, `cors`, `dotenv`。
-2.  **实现核心逻辑**：将所有的提示词工程（Prompt Engineering）和上游 API 调用逻辑迁移至此。
-3.  **本地开发配置**：
-    *   确保中间层运行在专用端口（例如 `3005`）。
-    *   配置 CORS 允许 `localhost:5173` (Vite 默认端口) 访问。
+### [ ] 3. 极简前端重构
+- 前端的 API 调用不再包含任何 Prompt 或复杂的生成配置，仅发送用户输入的纯粹业务数据。
+  示例：`await fetch('/api/action/generate', { method: 'POST', body: JSON.stringify({ 纯业务参数 }) })`。
 
-### 第三阶段：前端重构 (Frontend Refactoring)
-1.  **配置 Vite 代理**：在 `vite.config.ts` 中添加代理配置，将 `/api` 指向中间层端口。
-    ```typescript
-    // vite.config.ts
-    server: {
-      proxy: {
-        '/api': 'http://localhost:3005'
-      }
+### [ ] 4. 更新 Vite 本地代理 (Critical: Prevent 404 Errors)
+- 修改 `vite.config.ts`，配置 Server Proxy，将前端的 `/api` 请求无缝转发到后端。
+- ⚠️ **核心防御指引**：修改时必须**基于现有的 `server` 配置进行深度合并**（保留原本的 `host`, `port` 等参数），仅在内部追加 `proxy` 对象。严禁粗暴替换或重写整个 `server` 块，这极易导致配置丢失或代理未生效从而引发前端 404。
+- **端口对齐核对**：必须确保 `proxy` 指向的端口（默认 `3005`）与你在 `middleware.cjs` 底部实际启动的端口精确吻合。
+
+\`\`\`typescript
+  // Vite 代理合并修改示例
+  server: {
+    port: 3000,         // <-- 必须保留原有项目可能存在的配置
+    host: '0.0.0.0',    // <-- 必须保留原有项目可能存在的配置
+    proxy: {
+      '/api': 'http://localhost:3005' // <-- 安全地追加这部分
     }
-    ```
-2.  **更新服务层**：
-    *   修改 API 调用为 **相对路径**（例如 `/api/roast`）。
-    *   **严禁**在 UI 代码中硬编码 `http://localhost:3005`；必须依赖代理。这能确保无缝迁移到生产环境（生产环境下前后端同源）。
-
-### 第三阶段：验证 (Verification)
-1.  **双重启动脚本**：创建/更新 `start-dev.sh` 以同时启动：
-    *   中间层：`node middleware.cjs`
-    *   前端：`npm run dev`
-2.  **一致性检查**：验证后端使用的文本模型（如 `gemini-2.5-flash`）和图像模型（如 `gemini-3-pro`）版本是否与用户需求完全一致。
-
-## 💡 关键检查点 (Critical Checkpoints)
-*   **路由**：前端是否使用 `/api/...` 形式的请求？
-*   **代理**：Vite 代理是否已正确配置？
-*   **模型**：开发环境和任何生成的生产模版中，模型版本 (v1.5 vs v2.5) 是否完全一致？
-
+  },
+\`\`\`

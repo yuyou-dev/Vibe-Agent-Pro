@@ -160,46 +160,56 @@ class GeminiAnalyzer:
         """解析TypeScript/JavaScript文件"""
         calls = []
 
-        # 查找导出的函数（包含函数签名）
-
+        # 1. 查找导出的函数（一般函数和箭头函数）
         for match in re.finditer(r'(?:export\s+)?(?:async\s+)?(?:function|const)\s+(\w+)\s*(?:=\s*(?:async\s*)?\s*\(([^)]*)\)|\(([^)]*)\))', content):
             func_name = match.group(1)
-            # 两种可能的签名位置
             func_signature = match.group(2) or match.group(3) or ''
             func_start = match.end()
 
-            # 提取函数体
             arrow_pos = content.find('=>', func_start)
             if arrow_pos == -1 or arrow_pos > func_start + 500:
-                continue
+                brace_pos = content.find('{', func_start)
+            else:
+                brace_pos = content.find('{', arrow_pos)
 
-            brace_pos = content.find('{', arrow_pos)
             if brace_pos == -1:
                 continue
 
-            # 匹配闭合的 }
-            depth = 0
-            body_end = brace_pos
-            for i in range(brace_pos, min(brace_pos + 10000, len(content))):
-                if content[i] == '{':
-                    depth += 1
-                elif content[i] == '}':
-                    depth -= 1
-                    if depth == 0:
-                        body_end = i
-                        break
+            calls.extend(self._extract_and_analyze_body(content, brace_pos, match.start(), func_name, func_signature, file_path))
 
-            func_body = content[brace_pos:body_end]
-            line_num = content[:match.start()].count('\n') + 1
-
-            # 提取图片参数（如 referenceImages: ReferenceImageData[]）
-            image_params = self._extract_image_params(func_signature)
-
-            call = self._analyze_function(func_name, func_body, str(file_path.relative_to(self.root)), line_num, image_params)
-            if call:
-                calls.append(call)
+        # 2. 查找类方法或对象方法 (支持 async, static, public/private/protected 修饰符)
+        for match in re.finditer(r'(?:(?:public|private|protected|static)\s+)*(?:async\s+)?(\w+)\s*\(([^)]*)\)\s*(?::\s*[^{]+)?\s*\{', content):
+            func_name = match.group(1)
+            # 过滤掉一些常见的控制流关键字被误认为函数名
+            if func_name in ['if', 'for', 'while', 'switch', 'catch', 'function', 'constructor']:
+                continue
+            
+            func_signature = match.group(2) or ''
+            brace_pos = match.end() - 1 
+            calls.extend(self._extract_and_analyze_body(content, brace_pos, match.start(), func_name, func_signature, file_path))
 
         return calls
+
+    def _extract_and_analyze_body(self, content: str, brace_pos: int, match_start: int, func_name: str, func_signature: str, file_path: Path) -> List[APICall]:
+        """提取函数体并分析API调用"""
+        depth = 0
+        body_end = brace_pos
+        for i in range(brace_pos, min(brace_pos + 10000, len(content))):
+            if content[i] == '{':
+                depth += 1
+            elif content[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    body_end = i
+                    break
+
+        func_body = content[brace_pos:body_end]
+        line_num = content[:match_start].count('\n') + 1
+
+        image_params = self._extract_image_params(func_signature)
+        call = self._analyze_function(func_name, func_body, str(file_path.relative_to(self.root)), line_num, image_params)
+        
+        return [call] if call else []
 
     def _extract_image_params(self, func_signature: str) -> List[str]:
         """从函数签名中提取图片类型参数"""
